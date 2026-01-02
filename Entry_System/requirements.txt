@@ -1,0 +1,17 @@
+# Core web framework
+Flask>=2.3.0
+
+# Computer vision and ML
+opencv-python>=4.8.0
+ultralytics>=8.0.0
+easyocr>=1.7.0
+numpy>=1.24.0
+
+# Database
+mysql-connector-python>=8.1.0
+
+# Security
+bcrypt>=4.0.0
+
+# Utilities
+python-dotenv>=1.0.0

@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Exit Guard Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="report-violation-modal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Report Violation</h3>
+          <span class="modal-close">&times;</span>
+        </div>
+        <form class="modal-body">
+          <label for="report-plate">License Plate</label>
+          <input
+            type="text"
+            id="report-plate"
+            placeholder="Enter license plate"
+          />
+          <label for="report-owner">Owner Name</label>
+          <input type="text" id="report-owner" placeholder="Enter owner name" />
+          <label for="report-owner-type">Owner Type</label>
+          <select id="report-owner-type">
+            <option>Student</option>
+            <option>Faculty</option>
+            <option>Guest</option>
+          </select>
+          <label for="report-violation-type">Violation Type</label>
+          <select id="report-violation-type">
+            <option>Illegal Parking</option>
+            <option>Speeding</option>
+            <option>Other</option>
+          </select>
+          <label for="report-description">Description</label>
+          <textarea
+            id="report-description"
+            placeholder="Describe the violation"
+            rows="3"
+          ></textarea>
+          <label for="report-severity">Severity</label>
+          <select id="report-severity">
+            <option>Medium</option>
+            <option>Low</option>
+            <option>High</option>
+          </select>
+          <label for="report-location">Location</label>
+          <input
+            type="text"
+            id="report-location"
+            placeholder="Enter location (e.g., Parking Lot A, Block 3)"
+          />
+
+          <button type="submit" class="btn btn-primary">
+            Report Violation
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="dashboard-container">
+      <header class="dashboard-header">
+        <h2>Exit Guard Dashboard</h2>
+        <div class="header-actions">
+          <span class="welcome-user">Welcome, {{ guard_id }} (Exit Guard)</span>
+
+          <button class="btn btn-danger" id="report-violation-btn">
+            <span class="material-icons-outlined">flag</span>
+            Report Violation
+          </button>
+          <a href="#" class="logout-link" onclick="confirmLogout()">
+            <span class="material-icons-outlined">logout</span>
+            Logout
+          </a>
+        </div>
+      </header>
+
+      <main class="dashboard-main">
+        <section class="main-content">
+          <div class="card camera-feed-card">
+            <h3>
+              <span class="material-icons-outlined">videocam</span>
+              Live ANPR Camera Feed
+            </h3>
+            <div class="camera-feed-content">
+              <img
+                id="video-feed"
+                src="/video_feed"
+                alt="Live Camera Feed"
+                style="width: 100%; height: auto; border-radius: 8px"
+              />
+              <div class="camera-status">
+                <span class="status-indicator active"></span>
+                <span>ANPR Active - Live Feed</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="vehicle-summary-container">
+            <div class="summary-card">
+              <span class="material-icons-outlined">two_wheeler</span>
+              <div class="count" id="count-2-wheeler">0</div>
+              <div class="label">2 Wheeler</div>
+            </div>
+            <div class="summary-card">
+              <span class="material-icons-outlined">electric_rickshaw</span>
+              <div class="count" id="count-3-wheeler">0</div>
+              <div class="label">3 Wheeler</div>
+            </div>
+            <div class="summary-card">
+              <span class="material-icons-outlined">directions_car</span>
+              <div class="count" id="count-4-wheeler">0</div>
+              <div class="label">4 Wheeler</div>
+            </div>
+            <div class="summary-card">
+              <span class="material-icons-outlined">local_shipping</span>
+              <div class="count" id="count-6-wheeler">0</div>
+              <div class="label">6+ Wheeler</div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="sidebar">
+          <div class="card vehicle-info-card">
+            <h3>
+              <span class="material-icons-outlined">badge</span>
+              Vehicle Exit Info
+            </h3>
+            <div class="info-grid">
+              <span>Plate:</span><strong id="info-plate">-</strong>
+              <span>Owner:</span><strong id="info-owner">-</strong>
+              <span>Vehicle:</span><strong id="info-vehicle">-</strong>
+              <span>Color:</span><strong id="info-color">-</strong>
+              <span>Time:</span><strong id="info-time">-</strong>
+              <span>Date:</span><strong id="info-date">-</strong>
+              <span>Owner Type:</span><strong id="info-owner-type">-</strong>
+              <span>Status:</span><strong id="info-status">-</strong>
+            </div>
+            <div class="info-actions" id="clear-action">
+              <button class="btn btn-light" id="clear-btn">
+                <span class="material-icons-outlined">clear</span>
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div class="card parking-overview-card">
+            <h3>
+              <span class="material-icons-outlined">local_parking</span>
+              Parking Overview
+            </h3>
+            <div class="overview-stats">
+              <div class="stat-item">
+                <span>Total</span>
+                <strong id="total-capacity">200</strong>
+              </div>
+              <div class="stat-item">
+                <span>Occupied</span>
+                <strong id="occupied">0</strong>
+              </div>
+              <div class="stat-item">
+                <span>Available</span>
+                <strong id="available" class="green">0</strong>
+              </div>
+            </div>
+            <div class="occupancy-bar">
+              <div class="progress-label">
+                <span>Occupancy</span>
+                <span id="occupancy-percent">0%</span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-bar-inner" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <!-- Vehicle exit popup backdrop -->
+    <div
+      id="vehicle-exit-backdrop"
+      style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 9999;
+        display: none;
+      "
+    ></div>
+
+    <!-- Vehicle exit popup -->
+    <div
+      id="vehicle-exit-popup"
+      style="
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        padding: 0;
+        border-radius: 16px;
+        z-index: 10000;
+        display: none;
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+        width: 600px;
+        max-width: 90vw;
+        border: 2px solid #dc3545;
+      "
+    >
+      <div
+        style="
+          background: linear-gradient(135deg, #dc3545, #c82333);
+          color: white;
+          padding: 32px;
+          border-radius: 14px 14px 0 0;
+          text-align: center;
+        "
+      >
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 12px;
+          "
+        >
+          <span class="material-icons-outlined" style="font-size: 36px"
+            >directions_car</span
+          >
+          <h2 style="margin: 0; font-size: 28px; font-weight: 700">
+            VEHICLE EXIT DETECTED
+          </h2>
+        </div>
+        <p style="margin: 0; opacity: 0.95; font-size: 16px; font-weight: 500">
+          Vehicle has exited the premises
+        </p>
+      </div>
+      <div style="padding: 36px">
+        <div
+          class="info-grid"
+          style="
+            display: grid;
+            grid-template-columns: 140px 1fr;
+            gap: 20px 24px;
+            font-size: 18px;
+          "
+        >
+          <span style="color: #666; font-weight: 600">License Plate:</span
+          ><strong
+            id="popup-plate"
+            style="color: #333; font-size: 22px; font-weight: 700"
+            >-</strong
+          >
+          <span style="color: #666; font-weight: 600">Owner:</span
+          ><strong id="popup-owner" style="color: #333; font-size: 20px"
+            >-</strong
+          >
+          <span style="color: #666; font-weight: 600">Vehicle:</span
+          ><strong id="popup-vehicle" style="color: #333; font-size: 20px"
+            >-</strong
+          >
+          <span style="color: #666; font-weight: 600">Color:</span
+          ><strong id="popup-color" style="color: #333; font-size: 20px"
+            >-</strong
+          >
+          <span style="color: #666; font-weight: 600">Owner Type:</span
+          ><strong id="popup-owner-type" style="color: #333; font-size: 20px"
+            >-</strong
+          >
+          <span style="color: #666; font-weight: 600">Exit Time:</span
+          ><strong id="popup-time" style="color: #333; font-size: 20px"
+            >-</strong
+          >
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/exit_script.js"></script>
+  </body>
+</html>
