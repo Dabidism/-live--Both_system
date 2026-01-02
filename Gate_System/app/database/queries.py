@@ -178,7 +178,7 @@ class ParkingQueries:
                 """)
                 results = cursor.fetchall()
                 
-                counts = {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, '6_wheeler': 0}
+                counts = {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, 'other': 0}
                 for result in results:
                     wheels = result['numOfWheels'] or 4
                     count = result['count']
@@ -188,13 +188,13 @@ class ParkingQueries:
                         counts['3_wheeler'] = count
                     elif wheels == 4:
                         counts['4_wheeler'] = count
-                    elif wheels >= 6:
-                        counts['6_wheeler'] = count
+                    else:
+                        counts['other'] += count
                 
                 return counts
             except Exception as e:
                 print(f"Database error in get_daily_vehicle_counts: {e}")
-                return {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, '6_wheeler': 0}
+                return {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, 'other': 0}
     
     @staticmethod
     def get_daily_allocation_counts() -> Dict[str, int]:
@@ -584,7 +584,7 @@ class DashboardQueries:
             print(f"Database error in get_dashboard_stats: {e}")
             return {
                 'parking': {'total_capacity': 200, 'current_available': 200, 'occupied': 0, 'occupancy_rate': 0},
-                'vehicle_counts': {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, '6_wheeler': 0},
+                'vehicle_counts': {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, 'other': 0},
                 'allocations': {'students': {'current': 0, 'max': 20}, 'faculty': {'current': 0, 'max': 160}, 'guests': {'current': 0, 'max': 20}},
                 'registered_vehicles': {'students': 0, 'faculty': 0, 'visitors': 0},
                 'rfid': {'total': 0, 'active': 0, 'inactive': 0},

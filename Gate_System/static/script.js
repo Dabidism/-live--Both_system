@@ -260,7 +260,7 @@ function updateVehicleCounts(data) {
   document.getElementById('count-2-wheeler').textContent = data['2_wheeler'] || 0;
   document.getElementById('count-3-wheeler').textContent = data['3_wheeler'] || 0;
   document.getElementById('count-4-wheeler').textContent = data['4_wheeler'] || 0;
-  document.getElementById('count-6-wheeler').textContent = data['6_wheeler'] || 0;
+  document.getElementById('count-other').textContent = data['other'] || 0;
 }
 
 function updateAllocations(data) {

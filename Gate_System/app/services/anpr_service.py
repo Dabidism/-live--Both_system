@@ -35,7 +35,7 @@ class ANPRService:
         self.current_vehicle_info: Dict[str, Any] = {}
         
         # Counters (will be refreshed from database)
-        self.vehicle_counts = {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, '6_wheeler': 0}
+        self.vehicle_counts = {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, 'other': 0}
         self.allocation_counts = {'student': 0, 'faculty': 0, 'guest': 0}
         
         # Performance tracking
@@ -265,7 +265,7 @@ class ANPRService:
         try:
             return ParkingQueries.get_daily_vehicle_counts()
         except Exception:
-            return {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, '6_wheeler': 0}
+            return {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, 'other': 0}
     
     def _create_entry_event(self, plate_num: str) -> None:
         """Create entry event in database for popup display"""
