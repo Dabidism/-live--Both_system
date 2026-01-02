@@ -116,10 +116,20 @@ class ParkingQueries:
             try:
                 cursor = conn.cursor(dictionary=True)
                 
-                # Get total capacity
-                cursor.execute("SELECT totalCapacity FROM parkingstatus WHERE id = 1")
-                capacity_result = cursor.fetchone()
-                total_capacity = capacity_result['totalCapacity'] if capacity_result else 200
+                # Get limits from user's schema (allocated* columns)
+                cursor.execute("""
+                    SELECT totalCapacity, 
+                           allocatedStudents, allocatedFaculty, 
+                           allocatedStaff, allocatedGuests
+                    FROM parkingstatus ORDER BY id ASC LIMIT 1
+                """)
+                status_result = cursor.fetchone()
+                
+                total_capacity = status_result['totalCapacity'] if status_result else 200
+                allocated_students = status_result['allocatedStudents'] if status_result else 100
+                allocated_faculty = status_result['allocatedFaculty'] if status_result else 50
+                allocated_staff = status_result['allocatedStaff'] if status_result else 30
+                allocated_guests = status_result['allocatedGuests'] if status_result else 20
                 
                 # Count vehicles currently inside (entered today but not exited)
                 cursor.execute("""
@@ -134,11 +144,22 @@ class ParkingQueries:
                 
                 return ParkingStatus(
                     total_capacity=total_capacity,
-                    current_available=current_available
+                    current_available=current_available,
+                    allocated_students=allocated_students,
+                    allocated_faculty=allocated_faculty,
+                    allocated_staff=allocated_staff,
+                    allocated_guests=allocated_guests
                 )
             except Exception as e:
                 print(f"Database error in get_parking_status: {e}")
-                return ParkingStatus(total_capacity=200, current_available=200)
+                return ParkingStatus(
+                    total_capacity=200, 
+                    current_available=200,
+                    allocated_students=100,
+                    allocated_faculty=50,
+                    allocated_staff=30,
+                    allocated_guests=20
+                )
     
     @staticmethod
     def get_daily_vehicle_counts() -> Dict[str, int]:
@@ -177,35 +198,54 @@ class ParkingQueries:
     
     @staticmethod
     def get_daily_allocation_counts() -> Dict[str, int]:
-        """Get allocation counts for today (currently inside)"""
+        """Get allocation counts by role category matching user logic"""
         with db_pool.get_connection_context() as conn:
             try:
                 cursor = conn.cursor(dictionary=True)
+                # Logic matches user's PHP script
                 cursor.execute("""
                     SELECT 
-                        COALESCE(LOWER(vo.role), 'guest') as role, 
+                        CASE 
+                            WHEN vo.role = 'student' THEN 'students'
+                            WHEN vo.role = 'faculty' THEN 'faculty'
+                            WHEN vo.role IN ('non-teaching', 'staff') THEN 'staff'
+                            WHEN v.visitorID IS NOT NULL THEN 'guests'
+                            ELSE 'guests'
+                        END as role_category,
                         COUNT(DISTINCT h.plateNum) as count
                     FROM historical_log h
-                    LEFT JOIN vehicle v ON h.plateNum = v.plateNum
+                    JOIN vehicle v ON h.plateNum = v.plateNum
                     LEFT JOIN vehicleowner vo ON v.OwnerID = vo.OwnerID
                     WHERE DATE(h.entryTime) = CURDATE() AND h.status = 'entered'
-                    GROUP BY COALESCE(LOWER(vo.role), 'guest')
+                    GROUP BY role_category
                 """)
                 results = cursor.fetchall()
                 
-                counts = {'student': 0, 'faculty': 0, 'guest': 0}
+                counts = {'students': 0, 'faculty': 0, 'staff': 0, 'guests': 0}
                 for result in results:
-                    role = result['role'] or 'guest'
-                    count = result['count']
-                    if role in ['student', 'faculty']:
-                        counts[role] = count
-                    else:
-                        counts['guest'] += count
+                    category = result['role_category']
+                    if category in counts:
+                        counts[category] = result['count']
                 
+                # Update DB parkingstatus with current occupancy to keep sync with admin panel
+                try:
+                     update_cursor = conn.cursor()
+                     update_cursor.execute("""
+                        UPDATE parkingstatus SET 
+                        currentOccupiedStudents = %s,
+                        currentOccupiedFaculty = %s,
+                        currentOccupiedStaff = %s,
+                        currentOccupiedGuests = %s
+                        WHERE id = 1
+                     """, (counts['students'], counts['faculty'], counts['staff'], counts['guests']))
+                     conn.commit()
+                except Exception as ex:
+                    print(f"Failed to sync parking status table: {ex}")
+
                 return counts
             except Exception as e:
                 print(f"Database error in get_daily_allocation_counts: {e}")
-                return {'student': 0, 'faculty': 0, 'guest': 0}
+                return {'students': 0, 'faculty': 0, 'staff': 0, 'guests': 0}
     
     @staticmethod
     def get_total_registered_vehicles() -> Dict[str, int]:
@@ -514,11 +554,11 @@ class DashboardQueries:
             visitor_stats = ParkingQueries.get_visitor_pass_stats()
             user_stats = UserQueries.get_user_stats()
             
-            # Calculate allocation limits based on total capacity
-            total_capacity = parking_status.total_capacity
-            student_max = int(total_capacity * 0.1)  # 10% for students
-            faculty_max = int(total_capacity * 0.8)  # 80% for faculty
-            guest_max = int(total_capacity * 0.1)    # 10% for guests
+            # Get limits from parking_status object
+            student_max = parking_status.allocated_students
+            faculty_max = parking_status.allocated_faculty
+            staff_max = parking_status.allocated_staff
+            guest_max = parking_status.allocated_guests
             
             return {
                 'parking': {
@@ -529,9 +569,10 @@ class DashboardQueries:
                 },
                 'vehicle_counts': vehicle_counts,
                 'allocations': {
-                    'students': {'current': allocation_counts['student'], 'max': student_max},
+                    'students': {'current': allocation_counts['students'], 'max': student_max},
                     'faculty': {'current': allocation_counts['faculty'], 'max': faculty_max},
-                    'guests': {'current': allocation_counts['guest'], 'max': guest_max}
+                    'staff': {'current': allocation_counts['staff'], 'max': staff_max},
+                    'guests': {'current': allocation_counts['guests'], 'max': guest_max}
                 },
                 'registered_vehicles': registered_vehicles,
                 'rfid': rfid_stats,

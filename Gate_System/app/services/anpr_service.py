@@ -292,21 +292,24 @@ class ANPRService:
             total_capacity = status.total_capacity
             total_occupied = status.occupied_count
             
-            # Calculate allocation limits
-            student_max = int(total_capacity * 0.1)
-            faculty_max = int(total_capacity * 0.8)
-            guest_max = int(total_capacity * 0.1)
+            # Use dynamic limits from database (user schema)
+            student_max = status.allocated_students
+            faculty_max = status.allocated_faculty
+            staff_max = status.allocated_staff
+            guest_max = status.allocated_guests
             
             return {
-                'students': {'current': allocation_counts['student'], 'max': student_max},
+                'students': {'current': allocation_counts['students'], 'max': student_max},
                 'faculty': {'current': allocation_counts['faculty'], 'max': faculty_max},
-                'guests': {'current': allocation_counts['guest'], 'max': guest_max},
+                'staff': {'current': allocation_counts['staff'], 'max': staff_max},
+                'guests': {'current': allocation_counts['guests'], 'max': guest_max},
                 'total_occupied': total_occupied
             }
         except Exception:
             return {
                 'students': {'current': 0, 'max': 20},
                 'faculty': {'current': 0, 'max': 160},
+                'staff': {'current': 0, 'max': 10},
                 'guests': {'current': 0, 'max': 20},
                 'total_occupied': 0
             }

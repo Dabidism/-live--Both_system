@@ -1,5 +1,5 @@
 // Update intervals
-const STATS_UPDATE_INTERVAL = 10000; // 10 seconds for stats only
+const STATS_UPDATE_INTERVAL = 5000; // 5 seconds for fast updates
 const VEHICLE_CHECK_INTERVAL = 3000; // 3 seconds for vehicle info
 const RFID_CHECK_INTERVAL = 2000; // 2 seconds for RFID status
 const EVENT_CHECK_INTERVAL = 1500; // 1.5 seconds for event polling
@@ -42,12 +42,12 @@ document.addEventListener('DOMContentLoaded', function () {
   // Clear buttons
   const clearBtn = document.getElementById('clear-btn');
   if (clearBtn) clearBtn.onclick = clearInfo;
-  
+
   const clearRfidBtn = document.getElementById('clear-rfid-btn');
   if (clearRfidBtn) clearRfidBtn.onclick = clearRfid;
 
   // Deny entry button - use event delegation
-  document.addEventListener('click', function(e) {
+  document.addEventListener('click', function (e) {
     if (e.target.closest('#deny-entry-btn')) {
       e.preventDefault();
       showDenyNotification();
@@ -78,7 +78,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (response.ok) {
         const data = await response.json();
         const vehicleData = data.vehicle_info || {};
-        
+
         // Only update if vehicle data changed
         if (JSON.stringify(vehicleData) !== JSON.stringify(lastVehicleData)) {
           updateVehicleInfo(vehicleData);
@@ -90,7 +90,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     setTimeout(checkVehicleInfo, VEHICLE_CHECK_INTERVAL);
   }
-  
+
   async function checkRfidStatus() {
     try {
       const response = await fetch('/api/rfid_status');
@@ -103,22 +103,22 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     setTimeout(checkRfidStatus, RFID_CHECK_INTERVAL);
   }
-  
+
   async function checkLatestEvent() {
     try {
       const response = await fetch('/api/latest_event');
       if (response.ok) {
         const data = await response.json();
         const event = data.event;
-        
+
         // Only show popup if this is a new event and it's an entry
         if (event && event.id !== lastShownEvent && event.event_type === 'entry') {
           // Show popup for entry event
           showVehicleEntryPopup(event.event_data);
-          
+
           // Mark event as handled
           await acknowledgeEvent(event.id);
-          
+
           // Update last shown event
           lastShownEvent = event.id;
         }
@@ -128,7 +128,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     setTimeout(checkLatestEvent, EVENT_CHECK_INTERVAL);
   }
-  
+
   async function acknowledgeEvent(eventId) {
     try {
       await fetch('/api/ack_event', {
@@ -142,7 +142,7 @@ document.addEventListener('DOMContentLoaded', function () {
       console.error('Error acknowledging event:', error);
     }
   }
-  
+
   clearInfo();
   updateStats();
   checkVehicleInfo();
@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', function () {
 function showVehicleEntryPopup(data) {
   const popup = document.getElementById('vehicle-entry-popup');
   const backdrop = document.getElementById('vehicle-entry-backdrop');
-  
+
   // Update popup content
   document.getElementById('popup-plate').textContent = data.plate || 'Unknown';
   document.getElementById('popup-owner').textContent = data.owner || 'Unknown';
@@ -162,11 +162,11 @@ function showVehicleEntryPopup(data) {
   document.getElementById('popup-color').textContent = data.color || 'Unknown';
   document.getElementById('popup-owner-type').textContent = data.role || data.ownerType || 'visitor';
   document.getElementById('popup-time').textContent = data.timestamp || data.time || '-';
-  
+
   // Show backdrop and popup
   backdrop.style.display = 'block';
   popup.style.display = 'block';
-  
+
   // Hide after 5 seconds
   setTimeout(() => {
     backdrop.style.display = 'none';
@@ -208,7 +208,7 @@ function updateVehicleInfo(data) {
   // Check for RFID match
   const rfidMatch = data.rfid_match || {};
   const matchStatus = rfidMatch.match ? 'MATCHED' : (rfidMatch.reason || 'NO MATCH');
-  
+
   // Show popup for new vehicle entry only if RFID matches
   if (rfidMatch.match) {
     showVehicleEntryPopup(data);
@@ -226,12 +226,12 @@ function updateVehicleInfo(data) {
   document.getElementById('info-time').textContent = data.timestamp || data.time || '-';
   document.getElementById('info-date').textContent = data.date || '-';
   document.getElementById('info-match-status').textContent = matchStatus;
-  
+
   const ownerType = data.role || data.ownerType || 'visitor';
   document.getElementById('info-owner-type').textContent = ownerType;
 
   const isUnauthorized = !data.owner || data.owner === 'Unknown' || ownerType === 'visitor' || ownerType === 'unknown';
-  
+
   if (isUnauthorized && !rfidMatch.match) {
     document.getElementById('clear-action').style.display = 'none';
     document.getElementById('unauth-actions').style.display = 'grid';
@@ -251,7 +251,7 @@ function updateParkingStatus(data) {
   document.getElementById('occupied').textContent = occupied;
   document.getElementById('available').textContent = available;
   document.getElementById('occupancy-percent').textContent = percentage.toFixed(1) + '%';
-  
+
   const progressBar = document.querySelector('.occupancy-bar .progress-bar-inner');
   if (progressBar) progressBar.style.width = percentage + '%';
 }
@@ -267,25 +267,33 @@ function updateAllocations(data) {
   const studentCurrent = data.students?.current || 0;
   const studentMax = data.students?.max || 20;
   const studentPercent = studentMax > 0 ? (studentCurrent / studentMax) * 100 : 0;
-  
+
   document.getElementById('student-count').textContent = `${studentCurrent} / ${studentMax}`;
   const studentBar = document.querySelector('.allocation-item:nth-child(1) .progress-bar-inner');
   if (studentBar) studentBar.style.width = studentPercent + '%';
-  
+
   const facultyCurrent = data.faculty?.current || 0;
   const facultyMax = data.faculty?.max || 160;
   const facultyPercent = facultyMax > 0 ? (facultyCurrent / facultyMax) * 100 : 0;
-  
+
   document.getElementById('faculty-count').textContent = `${facultyCurrent} / ${facultyMax}`;
   const facultyBar = document.querySelector('.allocation-item:nth-child(2) .progress-bar-inner');
   if (facultyBar) facultyBar.style.width = facultyPercent + '%';
-  
+
+  const staffCurrent = data.staff?.current || 0;
+  const staffMax = data.staff?.max || 30;
+  const staffPercent = staffMax > 0 ? (staffCurrent / staffMax) * 100 : 0;
+
+  document.getElementById('staff-count').textContent = `${staffCurrent} / ${staffMax}`;
+  const staffBar = document.querySelector('.allocation-item:nth-child(3) .progress-bar-inner');
+  if (staffBar) staffBar.style.width = staffPercent + '%';
+
   const guestCurrent = data.guests?.current || 0;
   const guestMax = data.guests?.max || 20;
   const guestPercent = guestMax > 0 ? (guestCurrent / guestMax) * 100 : 0;
-  
+
   document.getElementById('guest-count').textContent = `${guestCurrent} / ${guestMax}`;
-  const guestBar = document.querySelector('.allocation-item:nth-child(3) .progress-bar-inner');
+  const guestBar = document.querySelector('.allocation-item:nth-child(4) .progress-bar-inner');
   if (guestBar) guestBar.style.width = guestPercent + '%';
 }
 
@@ -298,10 +306,10 @@ function confirmLogout() {
 function initializeVideoFeed() {
   const videoFeed = document.getElementById('video-feed');
   if (!videoFeed) return;
-  
+
   videoFeed.onerror = showCameraError;
   videoFeed.onload = showCameraActive;
-  
+
   fetch('/api/start_camera')
     .then(response => response.json())
     .then(data => {
@@ -313,9 +321,9 @@ function initializeVideoFeed() {
 function showCameraError() {
   const videoFeed = document.getElementById('video-feed');
   const cameraStatus = document.querySelector('.camera-status');
-  
+
   if (videoFeed) videoFeed.style.display = 'none';
-  
+
   if (cameraStatus) {
     cameraStatus.innerHTML = `<span class="status-indicator" style="background-color: #dc3545;"></span><span>Camera Offline</span>`;
   }
@@ -324,9 +332,9 @@ function showCameraError() {
 function showCameraActive() {
   const videoFeed = document.getElementById('video-feed');
   const cameraStatus = document.querySelector('.camera-status');
-  
+
   if (videoFeed) videoFeed.style.display = 'block';
-  
+
   if (cameraStatus) {
     cameraStatus.innerHTML = `<span class="status-indicator active"></span><span>ANPR Active - Live Feed</span>`;
   }
@@ -337,7 +345,7 @@ function retryCamera() {
   if (videoFeed) {
     videoFeed.src = '/video_feed?' + new Date().getTime();
   }
-  
+
   fetch('/api/start_camera')
     .then(response => response.json())
     .then(data => {
@@ -349,7 +357,7 @@ function retryCamera() {
 function updateRfidStatus(isActive, rfidData) {
   const indicator = document.getElementById('rfid-indicator');
   const statusContainer = document.getElementById('rfid-status');
-  
+
   if (isActive) {
     indicator.className = 'status-indicator active';
     if (statusContainer) {
@@ -361,7 +369,7 @@ function updateRfidStatus(isActive, rfidData) {
       statusContainer.innerHTML = '<div class="status-indicator"></div><span>RFID Scanner: Inactive</span>';
     }
   }
-  
+
   // Handle RFID data changes
   if (rfidData && JSON.stringify(rfidData) !== JSON.stringify(currentRfidData)) {
     currentRfidData = rfidData;
@@ -374,12 +382,12 @@ function handleRfidDetection(rfidData) {
     // Start workflow
     workflowActive = true;
     document.getElementById('workflow-status').style.display = 'block';
-    
+
     // Update workflow steps
     updateWorkflowStep('step-rfid', 'completed', `RFID scanned: ${rfidData.plate}`);
     updateWorkflowStep('step-camera', 'active', 'Waiting for camera scan...');
     updateWorkflowStep('step-match', 'waiting', 'Waiting...');
-    
+
     // Pre-fill some info from RFID
     document.getElementById('info-rfid').textContent = rfidData.rfid_code.substring(0, 12) + '...';
     document.getElementById('info-owner').textContent = rfidData.owner;
@@ -392,12 +400,12 @@ function handleRfidDetection(rfidData) {
 function updateWorkflowStep(stepId, status, text) {
   const step = document.getElementById(stepId);
   if (!step) return;
-  
+
   const textEl = step.querySelector('.step-text');
-  
+
   // Remove all status classes
   step.classList.remove('active', 'completed', 'error', 'waiting');
-  
+
   // Add new status
   step.classList.add(status);
   textEl.textContent = text;
@@ -405,18 +413,18 @@ function updateWorkflowStep(stepId, status, text) {
 
 function showDenyNotification() {
   console.log('Deny entry clicked');
-  
+
   // Clear sidebar and RFID data
   clearInfo();
   clearRfid();
-  
+
   const popup = document.getElementById('notification-popup');
   const backdrop = document.getElementById('denied-entry-backdrop');
-  
+
   if (popup && backdrop) {
     backdrop.style.display = 'block';
     popup.style.display = 'block';
-    
+
     setTimeout(() => {
       backdrop.style.display = 'none';
       popup.style.display = 'none';
