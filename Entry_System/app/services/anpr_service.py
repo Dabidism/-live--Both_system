@@ -3,6 +3,7 @@
 import cv2
 import threading
 import time
+import os
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -34,7 +35,7 @@ class ANPRService:
         self.current_vehicle_info: Dict[str, Any] = {}
         
         # Counters (will be refreshed from database)
-        self.vehicle_counts = {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, '6_wheeler': 0}
+        self.vehicle_counts = {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, 'other': 0}
         self.allocation_counts = {'student': 0, 'faculty': 0, 'guest': 0}
         
         # Performance tracking
@@ -45,14 +46,15 @@ class ANPRService:
         if self.is_running:
             return True
         
-        # Set camera URL based on server port
+        # Set camera URL based on configuration
         if camera_url is None:
-            import os
-            server_port = os.environ.get('SERVER_PORT', '5000')
-            if server_port == '5001':  # Exit camera
-                camera_url = "rtsp://admin:abcd1234@192.168.1.108:554/cam/realmonitor?channel=2&subtype=1"
-            else:  # Entry camera (default)
-                camera_url = "rtsp://admin:abcd1234@192.168.1.108:554/cam/realmonitor?channel=1&subtype=1"
+            system_type = os.getenv('SYSTEM_TYPE', 'ENTRY').upper()
+            if system_type == 'EXIT':
+                camera_url = os.getenv('CAMERA_URL_EXIT', "rtsp://admin:abcd1234@192.168.1.108:554/cam/realmonitor?channel=2&subtype=1")
+            else:
+                camera_url = os.getenv('CAMERA_URL_ENTRY', "rtsp://admin:abcd1234@192.168.1.108:554/cam/realmonitor?channel=1&subtype=1")
+        
+        print(f"Starting camera connection to: {camera_url}")
         
         try:
             self.cap = cv2.VideoCapture(camera_url, cv2.CAP_FFMPEG)
@@ -61,7 +63,10 @@ class ANPRService:
             
             if self.cap.isOpened():
                 self.is_running = True
+                print("Camera started successfully.")
                 return True
+            else:
+                print("Failed to open camera: capture is not opened.")
         except Exception as e:
             print(f"Camera start error: {e}")
         
@@ -115,25 +120,28 @@ class ANPRService:
             scale = self.config.max_processing_width / w
             frame = cv2.resize(frame, None, fx=scale, fy=scale)
         
-        # Detect vehicles - limit to 2 for performance
-        vehicles = self.detection_service.detect_vehicles(frame)
-        if not vehicles:
-            return frame
-        
         current_time = time.time()
         
-        # Process only first vehicle for better performance
-        for vehicle in vehicles[:1]:
-            x1, y1, x2, y2 = vehicle['bbox']
-            label = vehicle['label']
+        # Bypass vehicle detection for testing, detect plates directly on the entire frame
+        plates = self.detection_service.detect_plates(frame)
+        
+        for plate in plates[:1]:  # Process first plate only
+            px1, py1, px2, py2 = plate['bbox']
             
-            # Draw vehicle box
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
-            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            # Draw plate box
+            cv2.rectangle(frame, (px1, py1), (px2, py2), (0, 255, 0), 2)
             
-            # Process plates for larger vehicles only
-            if (x2 - x1) * (y2 - y1) > 8000:
-                self._process_vehicle_plates(frame, vehicle, current_time)
+            # Extract and process plate
+            plate_crop = frame[py1:py2, px1:px2]
+            processed_plate = self.detection_service.preprocess_plate(plate_crop)
+            
+            if processed_plate is not None:
+                # Process OCR in separate thread (label is mocked as 'Test Vehicle')
+                threading.Thread(
+                    target=self._process_ocr,
+                    args=(processed_plate, current_time, 'Test Vehicle'),
+                    daemon=True
+                ).start()
         
         return frame
     
@@ -193,8 +201,6 @@ class ANPRService:
                 'rfid_match': rfid_match_result
             }
             
-
-            
             # Check cooldown for entry/exit processing only
             if self.detected_plates.get(text):
                 return
@@ -214,28 +220,22 @@ class ANPRService:
         except Exception as e:
             print(f"OCR processing error: {e}")
     
-
-    
     def _handle_entry_exit_only(self, vehicle: Vehicle, is_entry: bool) -> None:
         """Handle vehicle entry/exit database logging and event creation"""
-        import os
-        server_port = os.environ.get('SERVER_PORT', '5000')
+        system_type = os.getenv('SYSTEM_TYPE', 'ENTRY').upper()
         
-        if server_port == '5000':  # Entry system - only log entries
+        if system_type == 'ENTRY':
             threading.Thread(target=ParkingQueries.log_entry, args=(vehicle.plate_num,), daemon=True).start()
             self.current_vehicle_info['action'] = 'ENTERED'
             
             # Create entry event for popup
             threading.Thread(target=self._create_entry_event, args=(vehicle.plate_num,), daemon=True).start()
 
-        elif server_port == '5001':  # Exit system - only log exits
+        elif system_type == 'EXIT':
             threading.Thread(target=ParkingQueries.log_exit, args=(vehicle.plate_num,), daemon=True).start()
             self.current_vehicle_info['action'] = 'EXITED'
-
         
         self._refresh_counts()
-    
-
     
     def _refresh_counts(self) -> None:
         """Refresh counts from database"""
@@ -246,12 +246,10 @@ class ANPRService:
             print(f"Error refreshing counts: {e}")
     
     def _determine_entry_exit(self, plate_num: str) -> bool:
-        """Determine if this is an entry or exit based on server port"""
+        """Determine if this is an entry or exit based on system type"""
         try:
-            import os
-            # Force entry/exit based on server port
-            server_port = os.environ.get('SERVER_PORT', '5000')
-            return server_port == '5000'  # True for entry (port 5000), False for exit (port 5001)
+            system_type = os.getenv('SYSTEM_TYPE', 'ENTRY').upper()
+            return system_type == 'ENTRY'
         except Exception as e:
             print(f"Error determining entry/exit: {e}")
             return True  # Default to entry
@@ -270,7 +268,7 @@ class ANPRService:
         try:
             return ParkingQueries.get_daily_vehicle_counts()
         except Exception:
-            return {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, '6_wheeler': 0}
+            return {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, 'other': 0}
     
     def _create_entry_event(self, plate_num: str) -> None:
         """Create entry event in database for popup display"""
@@ -297,21 +295,24 @@ class ANPRService:
             total_capacity = status.total_capacity
             total_occupied = status.occupied_count
             
-            # Calculate allocation limits
-            student_max = int(total_capacity * 0.1)
-            faculty_max = int(total_capacity * 0.8)
-            guest_max = int(total_capacity * 0.1)
+            # Use dynamic limits from database (user schema)
+            student_max = status.allocated_students
+            faculty_max = status.allocated_faculty
+            staff_max = status.allocated_staff
+            guest_max = status.allocated_guests
             
             return {
-                'students': {'current': allocation_counts['student'], 'max': student_max},
+                'students': {'current': allocation_counts['students'], 'max': student_max},
                 'faculty': {'current': allocation_counts['faculty'], 'max': faculty_max},
-                'guests': {'current': allocation_counts['guest'], 'max': guest_max},
+                'staff': {'current': allocation_counts['staff'], 'max': staff_max},
+                'guests': {'current': allocation_counts['guests'], 'max': guest_max},
                 'total_occupied': total_occupied
             }
         except Exception:
             return {
                 'students': {'current': 0, 'max': 20},
                 'faculty': {'current': 0, 'max': 160},
+                'staff': {'current': 0, 'max': 10},
                 'guests': {'current': 0, 'max': 20},
                 'total_occupied': 0
             }

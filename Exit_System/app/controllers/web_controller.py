@@ -27,6 +27,7 @@ def create_app() -> Flask:
     
     # Configuration
     app.secret_key = os.getenv('SECRET_KEY', 'anpr_guard_system_2024')
+    app.config['SESSION_COOKIE_NAME'] = 'exit_system_session'
     
     # Initialize services
     global anpr_service

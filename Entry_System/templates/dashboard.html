@@ -30,6 +30,7 @@
           <select id="report-owner-type">
             <option>Student</option>
             <option>Faculty</option>
+            <option>Staff</option>
             <option>Guest</option>
           </select>
           <label for="report-violation-type">Violation Type</label>
@@ -198,19 +199,14 @@
               <div class="label">2 Wheeler</div>
             </div>
             <div class="summary-card">
-              <span class="material-icons-outlined">electric_rickshaw</span>
-              <div class="count" id="count-3-wheeler">0</div>
-              <div class="label">3 Wheeler</div>
-            </div>
-            <div class="summary-card">
               <span class="material-icons-outlined">directions_car</span>
               <div class="count" id="count-4-wheeler">0</div>
               <div class="label">4 Wheeler</div>
             </div>
             <div class="summary-card">
               <span class="material-icons-outlined">local_shipping</span>
-              <div class="count" id="count-6-wheeler">0</div>
-              <div class="label">6+ Wheeler</div>
+              <div class="count" id="count-other">0</div>
+              <div class="label">Other Vehicles</div>
             </div>
           </div>
         </section>
@@ -267,11 +263,7 @@
             <div class="info-actions" id="clear-action">
               <button class="btn btn-light" id="clear-btn">
                 <span class="material-icons-outlined">clear</span>
-                Clear
-              </button>
-              <button class="btn btn-secondary" id="clear-rfid-btn">
-                <span class="material-icons-outlined">refresh</span>
-                Clear RFID
+                Clear Information
               </button>
             </div>
           </div>
@@ -326,6 +318,18 @@
                     Faculty
                   </span>
                   <span id="faculty-count">0 / 160</span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-bar-inner" style="width: 0%"></div>
+                </div>
+              </div>
+              <div class="allocation-item">
+                <div class="progress-label">
+                  <span>
+                    <span class="material-icons-outlined">work</span>
+                    Staff
+                  </span>
+                  <span id="staff-count">0 / 30</span>
                 </div>
                 <div class="progress-bar">
                   <div class="progress-bar-inner" style="width: 0%"></div>

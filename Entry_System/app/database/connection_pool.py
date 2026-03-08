@@ -31,9 +31,24 @@ class DatabasePool:
     def get_connection(self) -> mysql.connector.MySQLConnection:
         """Get connection from pool with timeout"""
         try:
-            return self.pool.get(timeout=2.0)
+            conn = self.pool.get(timeout=2.0)
+            # Verify connection is still alive
+            if conn.is_connected():
+                try:
+                    conn.ping(reconnect=True, attempts=1, delay=0)
+                    return conn
+                except Error:
+                    print("Connection ping failed, creating new one")
+                    # Fall through to create new connection
+            
+            # If not connected or ping failed, create new one
+            return create_connection()
+            
         except queue.Empty:
             # Create new connection if pool is empty
+            return create_connection()
+        except Exception as e:
+            print(f"Error getting connection from pool: {e}")
             return create_connection()
     
     def return_connection(self, conn: mysql.connector.MySQLConnection) -> None:

@@ -2,6 +2,7 @@
 
 import os
 import logging
+from functools import wraps
 from flask import Flask, render_template, Response, jsonify, request, redirect, url_for, session
 from typing import Optional
 
@@ -16,6 +17,15 @@ from app.config.performance_config import PerformanceConfig
 anpr_service: Optional[ANPRService] = None
 rfid_service: Optional[RFIDService] = None
 
+def login_required(f):
+    """Decorator to require login for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'guard_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 def create_app() -> Flask:
     """Create and configure Flask application"""
     app = Flask(__name__, 
@@ -27,7 +37,8 @@ def create_app() -> Flask:
     log.setLevel(logging.ERROR)
     
     # Configuration
-    app.secret_key = os.getenv('SECRET_KEY', 'anpr_guard_system_2024')
+    app.secret_key = os.getenv('SECRET_KEY', 'default_insecure_secret_key_change_me')
+    app.config['SESSION_COOKIE_NAME'] = 'entry_system_session'
     
     # Initialize services
     global anpr_service, rfid_service
@@ -35,8 +46,9 @@ def create_app() -> Flask:
     anpr_service = ANPRService(config)
     rfid_service = RFIDService()
     
-    # Start RFID scanning with callback
-    rfid_service.start_scanning(callback=_handle_rfid_detection)
+    # Start RFID scanning with callback if enabled
+    if os.getenv('RFID_ENABLED', 'true').lower() == 'true':
+        rfid_service.start_scanning(callback=_handle_rfid_detection)
     
     # Register routes
     register_auth_routes(app)
@@ -66,13 +78,12 @@ def register_auth_routes(app: Flask) -> None:
             if user:
                 session['guard_id'] = user.user_id
                 session['username'] = user.username
-                # Determine guard type based on port
-                import os
-                server_port = os.environ.get('SERVER_PORT', '5000')
-                guard_type = 'Exit System' if server_port == '5001' else 'Entry System'
-                session['guard_type'] = guard_type
                 
-                description = f'{guard_type} - Guard {user.username} logged in successfully'
+                # Determine guard type based on configured system type
+                system_type = os.getenv('SYSTEM_TYPE', 'ENTRY').upper()
+                session['guard_type'] = f"{system_type.capitalize()} System"
+                
+                description = f'{session["guard_type"]} - Guard {user.username} logged in successfully'
                 AccessLogQueries.log_guard_action(user.user_id, 'login', description)
                 return redirect(url_for('index'))
             else:
@@ -92,50 +103,40 @@ def register_auth_routes(app: Flask) -> None:
     def logout():
         guard_id = session.get('guard_id')
         username = session.get('username', 'unknown')
-        print(f"Logout attempt - Guard ID: {guard_id}, Username: {username}")
         
         if guard_id:
             try:
                 guard_type = session.get('guard_type', 'Unknown System')
-                result = AccessLogQueries.log_guard_action(guard_id, 'logout', f'{guard_type} - Guard {username} logged out')
-                print(f"Logout logging result: {result}")
+                AccessLogQueries.log_guard_action(guard_id, 'logout', f'{guard_type} - Guard {username} logged out')
             except Exception as e:
                 print(f"Error logging logout: {e}")
         
         session.clear()
         return redirect(url_for('login'))
-    
-    @app.route('/test_log')
-    def test_log():
-        try:
-            result = AccessLogQueries.log_guard_action('TEST', 'login', 'Test log entry')
-            return f'Test log result: {result}'
-        except Exception as e:
-            return f'Test log error: {e}'
 
 def register_main_routes(app: Flask) -> None:
     """Register main application routes"""
     
     @app.route('/')
+    @login_required
     def index():
-        if 'guard_id' not in session:
-            return redirect(url_for('login'))
-        # Check if running on exit port (5001) to show exit dashboard
-        if request.environ.get('SERVER_PORT') == '5001':
+        # Check if running on exit port to show exit dashboard
+        system_type = os.getenv('SYSTEM_TYPE', 'ENTRY').upper()
+        if system_type == 'EXIT':
             return render_template('exit_dashboard.html', guard_id=session.get('username', session['guard_id']))
         return render_template('dashboard.html', guard_id=session.get('username', session['guard_id']))
     
     @app.route('/exit')
+    @login_required
     def exit_dashboard():
-        if 'guard_id' not in session:
-            return redirect(url_for('login'))
+        # Force exit dashboard view if explicitly requested? 
+        # Or maybe this route should be deprecated if we are unifying logic?
+        # Keeping it for backward compatibility but using the unified template
         return render_template('exit_dashboard.html', guard_id=session.get('username', session['guard_id']))
     
     @app.route('/video_feed')
+    @login_required
     def video_feed():
-        if 'guard_id' not in session:
-            return redirect(url_for('login'))
-        
         if not anpr_service.is_running:
             anpr_service.start_camera()
         
@@ -146,15 +147,12 @@ def register_api_routes(app: Flask) -> None:
     """Register API routes"""
     
     @app.route('/api/dashboard')
+    @login_required
     def get_dashboard():
-        if 'guard_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
-        
         try:
             # Get vehicle info
             vehicle_info = anpr_service.get_current_vehicle_info()
 
-            
             # Get parking status
             status = ParkingQueries.get_parking_status()
             
@@ -179,20 +177,11 @@ def register_api_routes(app: Flask) -> None:
             })
         except Exception as e:
             print(f"Dashboard API error: {e}")
-            return jsonify({
-                'vehicle_info': {},
-                'dashboard_stats': {
-                    'parking': {'total_capacity': 200, 'current_available': 200, 'occupied': 0, 'occupancy_rate': 0},
-                    'vehicle_counts': {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, '6_wheeler': 0},
-                    'allocations': {'students': {'current': 0, 'max': 20}, 'faculty': {'current': 0, 'max': 160}, 'guests': {'current': 0, 'max': 20}}
-                }
-            })
+            return jsonify({'error': 'Internal server error'}), 500
     
     @app.route('/api/vehicle_info')
+    @login_required
     def get_vehicle_info():
-        if 'guard_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
-        
         try:
             vehicle_info = anpr_service.get_current_vehicle_info()
             return jsonify({'vehicle_info': vehicle_info})
@@ -200,10 +189,8 @@ def register_api_routes(app: Flask) -> None:
             return jsonify({'vehicle_info': {}})
     
     @app.route('/api/start_camera')
+    @login_required
     def start_camera():
-        if 'guard_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
-        
         try:
             success = anpr_service.start_camera()
             return jsonify({'success': success})
@@ -211,10 +198,8 @@ def register_api_routes(app: Flask) -> None:
             return jsonify({'success': False, 'error': str(e)})
     
     @app.route('/api/vehicle/<plate_num>')
+    @login_required
     def get_vehicle_details(plate_num):
-        if 'guard_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
-        
         try:
             vehicle_info = VehicleQueries.get_vehicle_with_rfid(plate_num)
             if vehicle_info:
@@ -225,10 +210,8 @@ def register_api_routes(app: Flask) -> None:
             return jsonify({'error': 'Internal server error'}), 500
     
     @app.route('/api/rfid_status')
+    @login_required
     def get_rfid_status():
-        if 'guard_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
-        
         try:
             rfid_data = rfid_service.get_current_rfid_data() if rfid_service else None
             return jsonify({
@@ -239,10 +222,8 @@ def register_api_routes(app: Flask) -> None:
             return jsonify({'rfid_active': False, 'current_rfid': None})
     
     @app.route('/api/clear_rfid', methods=['POST'])
+    @login_required
     def clear_rfid():
-        if 'guard_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
-        
         try:
             if rfid_service:
                 rfid_service.clear_current_rfid()
@@ -251,10 +232,8 @@ def register_api_routes(app: Flask) -> None:
             return jsonify({'success': False, 'error': str(e)})
     
     @app.route('/api/latest_event')
+    @login_required
     def get_latest_event():
-        if 'guard_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
-        
         try:
             event = EventQueries.get_latest_unhandled_event()
             if event:
@@ -266,10 +245,8 @@ def register_api_routes(app: Flask) -> None:
             return jsonify({'event': None})
     
     @app.route('/api/ack_event', methods=['POST'])
+    @login_required
     def acknowledge_event():
-        if 'guard_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
-        
         try:
             data = request.get_json()
             event_id = data.get('event_id')
@@ -281,4 +258,3 @@ def register_api_routes(app: Flask) -> None:
         except Exception as e:
             print(f"Error acknowledging event: {e}")
             return jsonify({'success': False, 'error': str(e)})
-    

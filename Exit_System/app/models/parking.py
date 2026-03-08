@@ -9,6 +9,10 @@ class ParkingStatus:
     """Parking status data model"""
     total_capacity: int
     current_available: int
+    allocated_students: int = 100
+    allocated_faculty: int = 50
+    allocated_staff: int = 30
+    allocated_guests: int = 20
     
     @property
     def occupied_count(self) -> int:

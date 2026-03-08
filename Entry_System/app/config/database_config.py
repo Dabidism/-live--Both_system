@@ -11,7 +11,7 @@ class DatabaseConfig:
     """Database configuration settings"""
     host: str = os.getenv('DB_HOST', 'localhost')
     user: str = os.getenv('DB_USER', 'root')
-    password: str = os.getenv('DB_PASSWORD', '')
+    password: str = os.getenv('DB_PASS', '')
     database: str = os.getenv('DB_NAME', 'gate_pass_system')
     port: int = int(os.getenv('DB_PORT', '3306'))
     

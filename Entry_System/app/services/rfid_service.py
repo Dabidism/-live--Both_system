@@ -11,7 +11,7 @@ from app.database.queries import VehicleQueries
 class RFIDService:
     """Service for handling RFID scanning and vehicle matching"""
     
-    def __init__(self, port: str = 'COM9', baudrate: int = 115200):
+    def __init__(self, port: str = 'COM3', baudrate: int = 115200):
         self.port = port
         self.baudrate = baudrate
         self.serial_connection: Optional[serial.Serial] = None
@@ -35,11 +35,15 @@ class RFIDService:
             
             self.scanning_thread = threading.Thread(target=self._scan_loop, daemon=True)
             self.scanning_thread.start()
-            
             print(f"RFID Scanner started on {self.port}")
             return True
+        except serial.SerialException as se:
+            print(f"Warning: Could not connect to RFID scanner on {self.port}. Running without RFID.")
+            self.is_running = False
+            return False
         except Exception as e:
-            print(f"Failed to start RFID scanner: {e}")
+            print(f"Warning: Failed to start RFID scanner: {e}")
+            self.is_running = False
             return False
     
     def stop_scanning(self) -> None:

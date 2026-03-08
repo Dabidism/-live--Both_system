@@ -115,25 +115,28 @@ class ANPRService:
             scale = self.config.max_processing_width / w
             frame = cv2.resize(frame, None, fx=scale, fy=scale)
         
-        # Detect vehicles - limit to 2 for performance
-        vehicles = self.detection_service.detect_vehicles(frame)
-        if not vehicles:
-            return frame
-        
         current_time = time.time()
         
-        # Process only first vehicle for better performance
-        for vehicle in vehicles[:1]:
-            x1, y1, x2, y2 = vehicle['bbox']
-            label = vehicle['label']
+        # Bypass vehicle detection for testing, detect plates directly on the entire frame
+        plates = self.detection_service.detect_plates(frame)
+        
+        for plate in plates[:1]:  # Process first plate only
+            px1, py1, px2, py2 = plate['bbox']
             
-            # Draw vehicle box
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
-            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            # Draw plate box
+            cv2.rectangle(frame, (px1, py1), (px2, py2), (0, 255, 0), 2)
             
-            # Process plates for larger vehicles only
-            if (x2 - x1) * (y2 - y1) > 8000:
-                self._process_vehicle_plates(frame, vehicle, current_time)
+            # Extract and process plate
+            plate_crop = frame[py1:py2, px1:px2]
+            processed_plate = self.detection_service.preprocess_plate(plate_crop)
+            
+            if processed_plate is not None:
+                # Process OCR in separate thread (label is mocked as 'Test Vehicle')
+                threading.Thread(
+                    target=self._process_ocr,
+                    args=(processed_plate, current_time, 'Test Vehicle'),
+                    daemon=True
+                ).start()
         
         return frame
     
@@ -173,7 +176,18 @@ class ANPRService:
             if not text:
                 return
             
+            # EXIT SYSTEM LOGIC Check
+            import os
+            server_port = os.environ.get('SERVER_PORT', '5000')
+            is_exit_system = (server_port == '5001')
 
+            if is_exit_system:
+                # 1. Exit system ONLY uses ANPR, so we don't strictly need to fetch RFID status 
+                # but we still want owner info. get_vehicle_with_rfid fetches owner info even if RFID is missing.
+                # 2. Exit system MUST only read the vehicle as an exit if the status is "entered".
+                if not ParkingQueries.is_vehicle_entered(text):
+                    # Vehicle is not inside, ignore the plate
+                    return
             
             vehicle_info = VehicleQueries.get_vehicle_with_rfid(text)
             
@@ -262,7 +276,7 @@ class ANPRService:
         try:
             return ParkingQueries.get_daily_vehicle_counts()
         except Exception:
-            return {'2_wheeler': 0, '3_wheeler': 0, '4_wheeler': 0, '6_wheeler': 0}
+            return {'2_wheeler': 0, '4_wheeler': 0, 'other': 0}
     
     def _create_exit_event(self, plate_num: str) -> None:
         """Create exit event in database for popup display"""
@@ -287,23 +301,28 @@ class ANPRService:
             allocation_counts = ParkingQueries.get_daily_allocation_counts()
             
             total_capacity = status.total_capacity
-            total_occupied = status.occupied_count
+            total_occupied = status.occupied_count if hasattr(status, 'occupied_count') else 0
             
-            # Calculate allocation limits
-            student_max = int(total_capacity * 0.1)
-            faculty_max = int(total_capacity * 0.8)
-            guest_max = int(total_capacity * 0.1)
+            # Use dynamic capacities if available in db, otherwise fallback to defaults.
+            # Assuming these percentages or direct columns could exist, but based on Entry System 
+            # we will set the default values if not defined dynamically in `status`.
+            student_max = getattr(status, 'allocated_students', 20)
+            faculty_max = getattr(status, 'allocated_faculty', 160)
+            staff_max = getattr(status, 'allocated_staff', 30)
+            guest_max = getattr(status, 'allocated_guests', 20)
             
             return {
-                'students': {'current': allocation_counts['student'], 'max': student_max},
-                'faculty': {'current': allocation_counts['faculty'], 'max': faculty_max},
-                'guests': {'current': allocation_counts['guest'], 'max': guest_max},
+                'students': {'current': allocation_counts.get('students', 0), 'max': student_max},
+                'faculty': {'current': allocation_counts.get('faculty', 0), 'max': faculty_max},
+                'staff': {'current': allocation_counts.get('staff', 0), 'max': staff_max},
+                'guests': {'current': allocation_counts.get('guests', 0), 'max': guest_max},
                 'total_occupied': total_occupied
             }
         except Exception:
             return {
                 'students': {'current': 0, 'max': 20},
                 'faculty': {'current': 0, 'max': 160},
+                'staff': {'current': 0, 'max': 30},
                 'guests': {'current': 0, 'max': 20},
                 'total_occupied': 0
             }
